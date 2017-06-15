@@ -12,11 +12,11 @@ package.GoMetrics = {
         network-access = blocked;
     };
 
-    # Use CopySrcBuild. See https://w.amazon.com/index.php/CopySrcBuild
-    build-system = copysrc;
+    build-system = bgo-wrap-make;
     build-tools = {
         1.0 = {
-            CopySrcBuild = 1.0;
+            BrazilMakeGo = 1.0;
+            GoLang = 1.0;
         };
     };
 
@@ -26,6 +26,7 @@ package.GoMetrics = {
     # be exported to other packages that build against you.
     dependencies = {
         1.0 = {
+            GoAmzn-Github-Aws-AwsSdkGo = 1.x;
         };
     };
 
