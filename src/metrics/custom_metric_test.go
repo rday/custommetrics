@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
 	"testing"
@@ -19,6 +20,14 @@ func (m mockClient) PutMetricData(inp *cloudwatch.PutMetricDataInput) (*cloudwat
 
 func TestCollectMetrics(t *testing.T) {
 	svc := &mockClient{}
-	metric := NewCustomMetric("Test Namespace", "Test Metric", nil)
+	errMetricData := &cloudwatch.PutMetricDataInput{
+		Namespace: aws.String("YourService"),
+		MetricData: []*cloudwatch.MetricDatum{
+			{
+				MetricName: aws.String("ServiceErrors"),
+			},
+		},
+	}
+	metric := NewCustomMetric(errMetricData)
 	_, _ = metric.emitMetric(svc, 1.0)
 }

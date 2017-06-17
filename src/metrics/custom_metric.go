@@ -1,39 +1,23 @@
 package metrics
 
 import (
-	"fmt"
-	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
 )
 
 type CustomMetric struct {
-	namespace  string
-	metricName string
-	dimensions []*cloudwatch.Dimension
-}
-
-func (c *CustomMetric) buildInput(value float64) *cloudwatch.PutMetricDataInput {
-	return &cloudwatch.PutMetricDataInput{
-		Namespace: aws.String(c.namespace),
-		MetricData: []*cloudwatch.MetricDatum{
-			{
-				MetricName: aws.String(c.metricName),
-				Dimensions: c.dimensions,
-				Value:      &value,
-			},
-		},
-	}
+	metric *cloudwatch.PutMetricDataInput
 }
 
 func (c *CustomMetric) emitMetric(svc cloudwatchiface.CloudWatchAPI, value float64) (*cloudwatch.PutMetricDataOutput, error) {
-	inp := c.buildInput(value)
-	return svc.PutMetricData(inp)
+	c.metric.MetricData[0].Value = &value
+	return svc.PutMetricData(c.metric)
 }
 
-func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, bufferLen int) (chan float64, chan chan struct{}) {
+func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, bufferLen int) (chan float64, chan chan struct{}, chan error) {
 	ch := make(chan float64, bufferLen)
 	doneCh := make(chan chan struct{}, 1)
+	errCh := make(chan error, 1)
 
 	go func() {
 		for {
@@ -44,19 +28,17 @@ func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, bufferLen 
 			case value := <-ch:
 				_, err := metric.emitMetric(svc, value)
 				if err != nil {
-					fmt.Println(err)
+					errCh <- err
 				}
 			}
 		}
 	}()
 
-	return ch, doneCh
+	return ch, doneCh, errCh
 }
 
-func NewCustomMetric(namespace, metricName string, dimensions []*cloudwatch.Dimension) *CustomMetric {
+func NewCustomMetric(metric *cloudwatch.PutMetricDataInput) *CustomMetric {
 	return &CustomMetric{
-		namespace:  namespace,
-		metricName: metricName,
-		dimensions: dimensions,
+		metric: metric,
 	}
 }
