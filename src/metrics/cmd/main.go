@@ -1,3 +1,9 @@
+// This package is an exmaple of how to use the custom metric package.
+// The custom metric package allows the user to emit metrics to Cloudwatch
+// over a channel. This simplifies the process of emitting metrics by
+// hiding the complexity of network connections and credentials.
+// All the user needs to do is pass the channel to a function, and that
+// function can emit values to Cloudwatch.
 package main
 
 import (
@@ -40,12 +46,16 @@ func main() {
 		},
 	}
 
+    // Create our metric collection pools using the session created above.
+    errMetricErrCh := make(chan error, 1)
 	errMetric := metrics.NewCustomMetric(errMetricData)
-	errMetricCh, errMetricDoneCh, errMetricErrCh := metrics.CollectMetrics(errMetric, svc, 10)
+	errMetricCh, errMetricDoneCh := metrics.CollectMetrics(errMetric, svc, errMetricErrCh, 10)
 
+    durationMetricErrCh := make(chan error, 1)
 	durationMetric := metrics.NewCustomMetric(durationMetricData)
-	durationMetricCh, durationMetricDoneCh, durationMetricErrCh := metrics.CollectMetrics(durationMetric, svc, 10)
+	durationMetricCh, durationMetricDoneCh := metrics.CollectMetrics(durationMetric, svc, durationMetricErrCh, 10)
 
+    // Handle errors in the background.
 	go func() {
 		for {
 			select {
@@ -57,6 +67,9 @@ func main() {
 		}
 	}()
 
+    // Metrics can be emitted asynchronously. A collection pool handles the network
+    // operations. The metric channel is easy to mock in unit tests. All the user
+    // needs to do is write a value to a channel.
 	errMetricCh <- 1.0
 	errMetricCh <- 2.0
 	errMetricCh <- 3.0
@@ -64,10 +77,16 @@ func main() {
 	durationMetricCh <- 1211.0
 	durationMetricCh <- 1132.0
 
-	fmt.Println("Sleep")
+    // CollectMetrics selects on the done channel and the value channel. If two
+    // channels in a select have messages waiting, it is non-deterministic which
+    // message will be processed first.
+    // So we sleep here to make sure all our metric values are processed before
+    // we shutdown the collector.
+	fmt.Println("Sleeping to let the collector emit metrics")
 	time.Sleep(1 * time.Second)
 	fmt.Println("Done")
 
+    // Shutdown our metric collection pools.
 	ackCh := make(chan struct{}, 1)
 	durationMetricDoneCh <- ackCh
 	<-ackCh

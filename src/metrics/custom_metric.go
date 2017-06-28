@@ -1,3 +1,8 @@
+// The metricis package allows the user to emit metrics to Cloudwatch
+// over a channel. This simplifies the process of emitting metrics by
+// hiding the complexity of network connections and credentials.
+// All the user needs to do is pass the channel to a function, and that
+// function can emit values to Cloudwatch.
 package metrics
 
 import (
@@ -5,6 +10,8 @@ import (
 	"github.com/aws/aws-sdk-go/service/cloudwatch/cloudwatchiface"
 )
 
+// CustomMetric is composed of a single value for now, but could
+// be easily expanded.
 type CustomMetric struct {
 	metric *cloudwatch.PutMetricDataInput
 }
@@ -14,10 +21,14 @@ func (c *CustomMetric) emitMetric(svc cloudwatchiface.CloudWatchAPI, value float
 	return svc.PutMetricData(c.metric)
 }
 
-func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, bufferLen int) (chan float64, chan chan struct{}, chan error) {
-	ch := make(chan float64, bufferLen)
+// CollectMetrics starts the collector for a particular metric on a particular Cloudwatch service. This
+// collector will emit the metric with the value written to its value channel. The collector can be
+// cleanly shutdown with a write to its done channel.
+// If an error channel is passed, errors will be written to that channel. The caller is responsible for
+// reading this channel, otherwise the collector WILL hang.
+func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, errCh chan error, bufferLen int) (chan float64, chan chan struct{}) {
+	valueCh := make(chan float64, bufferLen)
 	doneCh := make(chan chan struct{}, 1)
-	errCh := make(chan error, 1)
 
 	go func() {
 		for {
@@ -25,16 +36,16 @@ func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, bufferLen 
 			case ackCh := <-doneCh:
 				ackCh <- struct{}{}
 				return
-			case value := <-ch:
+			case value := <-valueCh:
 				_, err := metric.emitMetric(svc, value)
-				if err != nil {
+				if err != nil && errCh != nil {
 					errCh <- err
 				}
 			}
 		}
 	}()
 
-	return ch, doneCh, errCh
+	return valueCh, doneCh
 }
 
 func NewCustomMetric(metric *cloudwatch.PutMetricDataInput) *CustomMetric {
