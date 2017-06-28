@@ -12,7 +12,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/cloudwatch"
 	"metrics"
-	"time"
 )
 
 func main() {
@@ -46,16 +45,16 @@ func main() {
 		},
 	}
 
-    // Create our metric collection pools using the session created above.
-    errMetricErrCh := make(chan error, 1)
+	// Create our metric collection pools using the session created above.
+	errMetricErrCh := make(chan error, 1)
 	errMetric := metrics.NewCustomMetric(errMetricData)
 	errMetricCh, errMetricDoneCh := metrics.CollectMetrics(errMetric, svc, errMetricErrCh, 10)
 
-    durationMetricErrCh := make(chan error, 1)
+	durationMetricErrCh := make(chan error, 1)
 	durationMetric := metrics.NewCustomMetric(durationMetricData)
 	durationMetricCh, durationMetricDoneCh := metrics.CollectMetrics(durationMetric, svc, durationMetricErrCh, 10)
 
-    // Handle errors in the background.
+	// Handle errors in the background.
 	go func() {
 		for {
 			select {
@@ -67,9 +66,9 @@ func main() {
 		}
 	}()
 
-    // Metrics can be emitted asynchronously. A collection pool handles the network
-    // operations. The metric channel is easy to mock in unit tests. All the user
-    // needs to do is write a value to a channel.
+	// Metrics can be emitted asynchronously. A collection pool handles the network
+	// operations. The metric channel is easy to mock in unit tests. All the user
+	// needs to do is write a value to a channel.
 	errMetricCh <- 1.0
 	errMetricCh <- 2.0
 	errMetricCh <- 3.0
@@ -77,16 +76,10 @@ func main() {
 	durationMetricCh <- 1211.0
 	durationMetricCh <- 1132.0
 
-    // CollectMetrics selects on the done channel and the value channel. If two
-    // channels in a select have messages waiting, it is non-deterministic which
-    // message will be processed first.
-    // So we sleep here to make sure all our metric values are processed before
-    // we shutdown the collector.
-	fmt.Println("Sleeping to let the collector emit metrics")
-	time.Sleep(1 * time.Second)
-	fmt.Println("Done")
+	close(errMetricCh)
+	close(durationMetricCh)
 
-    // Shutdown our metric collection pools.
+	// Shutdown our metric collection pools.
 	ackCh := make(chan struct{}, 1)
 	durationMetricDoneCh <- ackCh
 	<-ackCh

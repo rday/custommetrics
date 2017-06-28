@@ -26,17 +26,26 @@ func (c *CustomMetric) emitMetric(svc cloudwatchiface.CloudWatchAPI, value float
 // cleanly shutdown with a write to its done channel.
 // If an error channel is passed, errors will be written to that channel. The caller is responsible for
 // reading this channel, otherwise the collector WILL hang.
-func CollectMetrics(metric *CustomMetric, svc *cloudwatch.CloudWatch, errCh chan error, bufferLen int) (chan float64, chan chan struct{}) {
+func CollectMetrics(metric *CustomMetric, svc cloudwatchiface.CloudWatchAPI, errCh chan error, bufferLen int) (chan float64, chan chan struct{}) {
 	valueCh := make(chan float64, bufferLen)
 	doneCh := make(chan chan struct{}, 1)
 
 	go func() {
+		var ackCh chan struct{}
+		done := false
+
 		for {
 			select {
-			case ackCh := <-doneCh:
-				ackCh <- struct{}{}
-				return
-			case value := <-valueCh:
+			case ackCh = <-doneCh:
+				done = true
+			case value, ok := <-valueCh:
+				// If the caller has written to the done channel, and the value channel has been closed,
+				// then acknowlege we are done and exit.
+				if !ok && done {
+					ackCh <- struct{}{}
+					return
+				}
+
 				_, err := metric.emitMetric(svc, value)
 				if err != nil && errCh != nil {
 					errCh <- err
